@@ -1,0 +1,30 @@
+{
+    "name": "opensearch/laravel-opensearch",
+    "description": "基于 laravel/scout 的 OpenSearch 驱动扩展",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "wangzhoudong",
+            "email": "wangzhoudong@foxmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.0",
+        "illuminate/support": "~5.4",
+        "opensearch/opensearch-sdk-php": "~3.1.0",
+        "laravel/scout": "~6.1.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Wangzd\\OpenSearch\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Wangzd\\OpenSearch\\OpenSearchServiceProvider"
+            ]
+        }
+    }
+}
