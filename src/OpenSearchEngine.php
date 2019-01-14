@@ -119,7 +119,7 @@ class OpenSearchEngine extends Engine
         if ($builder->index) {
             $params->setQuery("$builder->index:'$builder->query'");
         } else {
-            $params->setQuery("$builder->query");
+            $params->setQuery("default:'{$builder->query}'");
         }
         $params = new SearchParamsBuilder();
         //设置config子句的start值
@@ -129,7 +129,7 @@ class OpenSearchEngine extends Engine
         // 指定一个应用用于搜索
         $params->setAppName('shop');
         // 指定搜索关键词
-        $params->setQuery("default:'北鼎智能'");
+
         // 指定返回的搜索结果的格式为json
         $params->setFormat("fulljson");
         //添加排序字段
