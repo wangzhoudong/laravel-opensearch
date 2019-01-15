@@ -111,23 +111,17 @@ class OpenSearchEngine extends Engine
     protected function getOpenSearch(Builder $builder, $from, $count)
     {
         $params = new SearchParamsBuilder();
+        //设置config子句的start值
         $params->setStart($from);
+        //设置config子句的hit值
         $params->setHits($count);
         $params->setAppName($this->appName);
         //设置查询query
-        $params = new SearchParamsBuilder();
         if ($builder->index) {
             $params->setQuery("$builder->index:'$builder->query'");
         } else {
             $params->setQuery("default:'{$builder->query}'");
         }
-        //设置config子句的start值
-        $params->setStart(0);
-        //设置config子句的hit值
-        $params->setHits($builder->limit);
-        // 指定一个应用用于搜索
-        $params->setAppName($this->appName);
-        // 指定搜索关键词
         // 指定返回的搜索结果的格式为json
         $params->setFormat("fulljson");
         //添加排序字段
