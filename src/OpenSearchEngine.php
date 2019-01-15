@@ -112,21 +112,38 @@ class OpenSearchEngine extends Engine
     {
         $params = new SearchParamsBuilder();
         //设置config子句的start值
+
         $params->setStart($from);
         //设置config子句的hit值
+
         $params->setHits($count);
         $params->setAppName($this->appName);
-        //设置查询query
         if ($builder->index) {
             $params->setQuery("$builder->index:'$builder->query'");
         } else {
             $params->setQuery("default:'{$builder->query}'");
         }
+        if (isset($builder->fields)) {
+            //设置需返回哪些字段
+            $params->setFetchFields($builder->fields);
+        }
+        if (isset($builder->wheres)) {
+            //目前只支持 等于
+            foreach ($builder->wheres as $key=>$value) {
+                $arr[] = $key . '=' . $value;
+            }
+            $params->setFilter(implode(' AND ',$arr));
+        }
         // 指定返回的搜索结果的格式为json
         $params->setFormat("fulljson");
         //添加排序字段
-        $params->addSort('RANK', SearchParamsBuilder::SORT_DECREASE);
-
+        if (count($builder->orders) == 0) {
+            $params->addSort('RANK', SearchParamsBuilder::SORT_DECREASE);
+        }else{
+            foreach ($builder->orders as $value) {
+                $params->addSort($value['column'], $value['column']=='direction' ? SearchParamsBuilder::SORT_DECREASE : SearchParamsBuilder::SORT_INCREASE);
+            }
+        }
 
         $res = $this->searchClient->execute($params->build());
         return $res;
