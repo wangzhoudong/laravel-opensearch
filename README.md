@@ -24,8 +24,6 @@
         'opensearch'    => [
                 'accessKey'    => env('OPENSEARCH_ACCESS_KEY'),
                 'accessSecret' => env('OPENSEARCH_ACCESS_SECRET'),
-                'appName'      => env('OPENSEARCH_APP_NAME'),
-                'suggestName'  => env('OPENSEARCH_SUGGEST_NAME'),
                 'host'         => env('OPENSEARCH_HOST'),
                 'debug'        => env('OPENSEARCH_DEBUG'),
                 'timeout'      => env('OPENSEARCH_TIMEOUT'),
@@ -41,7 +39,5 @@
         OPENSEARCH_ACCESS_KEY=ACCESS_KEY
         OPENSEARCH_ACCESS_SECRET=ACCESS_SECRET
         OPENSEARCH_HOST=HOST
-        OPENSEARCH_APP_NAME=APP_NAME
-        OPENSEARCH_SUGGEST_NAME=SUGGEST_NAME
         OPENSEARCH_DEBUG=true
 

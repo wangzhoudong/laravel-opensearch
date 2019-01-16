@@ -6,6 +6,7 @@ use Illuminate\Config\Repository;
 use Illuminate\Database\Eloquent\Collection;
 use Laravel\Scout\Builder;
 use Laravel\Scout\Engines\Engine;
+use OpenSearch\Client\AppClient;
 use OpenSearch\Client\DocumentClient;
 use OpenSearch\Client\OpenSearchClient;
 use OpenSearch\Client\SuggestClient;
@@ -22,7 +23,6 @@ class OpenSearchEngine extends Engine
     protected $suggestClient;
     protected $config;
     protected $suggestName;
-    protected $appName;
 
     public function __construct(Repository $config)
     {
@@ -32,8 +32,6 @@ class OpenSearchEngine extends Engine
         $option['debug']      = $config->get('scout.opensearch.debug');
         $option['timeout']    = $config->get('scout.opensearch.timeout');
 
-
-        $this->appName        = $config->get('scout.opensearch.appName');
         $this->suggestName    = $config->get('scout.opensearch.suggestName');
 
         $this->client         = new OpenSearchClient($accessKeyID, $accessKeySecret, $host, $option);
@@ -42,7 +40,24 @@ class OpenSearchEngine extends Engine
         $this->suggestClient  = new SuggestClient($this->client);
     }
 
-    public function update($models){}
+    public function update($models){
+        //更新
+
+        $params['body'] = [];
+
+        $models->each(function($model) use (&$params)
+        {
+
+
+            $doc = collect($model->toSearchableArray())->except(['created_at', 'updated_at', 'deleted_at']);
+            dd($doc);
+            $params['body'][] = [
+                'doc' => $doc,
+                'doc_as_upsert' => true
+            ];
+        });
+        dd($params);
+    }
 
     public function delete($models){}
 
@@ -75,10 +90,10 @@ class OpenSearchEngine extends Engine
         if (array_get($result, 'result.num', 0) === 0) {
             return collect();
         }
-        $keys   = collect(array_get($result, 'result.items'))->pluck('fields.' . $model->getSearchableFields())->values()->all();
+        $keys   = collect(array_get($result, 'result.items'))->pluck('fields.' . $model->getKeyName())->values()->all();
         $models = $model->whereIn($model->getQualifiedKeyName(), $keys)->get()->keyBy($model->getKeyName());
         $res = collect(array_get($result, 'result.items'))->map(function ($item) use ($model, $models) {
-            $key = $item['fields'][$model->getSearchableFields()]; // todo
+            $key = $item['fields'][$model->getKeyName()]; // todo
             if (isset($models[$key])) {
                 return $models[$key];
             }
@@ -110,6 +125,7 @@ class OpenSearchEngine extends Engine
      */
     protected function getOpenSearch(Builder $builder, $from, $count)
     {
+
         $params = new SearchParamsBuilder();
         //设置config子句的start值
 
@@ -117,7 +133,7 @@ class OpenSearchEngine extends Engine
         //设置config子句的hit值
 
         $params->setHits($count);
-        $params->setAppName($this->appName);
+        $params->setAppName($builder->model->searchableAs());
         if ($builder->index) {
             $params->setQuery("$builder->index:'$builder->query'");
         } else {
@@ -127,7 +143,7 @@ class OpenSearchEngine extends Engine
             //设置需返回哪些字段
             $params->setFetchFields($builder->fields);
         }
-        if (isset($builder->wheres)) {
+        if (isset($builder->wheres) && count($builder->wheres)>0) {
             //目前只支持 等于
             foreach ($builder->wheres as $key=>$value) {
                 $arr[] = $key . '=' . $value;
@@ -184,6 +200,40 @@ class OpenSearchEngine extends Engine
 
     public function flush($model)
     {
-
+        $this->createOrUpdateApp($model);
     }
+
+    /**
+     * 创建APP
+     * @param $model
+     * @throws \Exception
+     */
+    protected function createOrUpdateApp($model) {
+
+
+
+        $appClient = new AppClient($this->client);
+        $ret = $this->checkResults($appClient->getById($model->searchableAs()));
+        if(isset($ret['errors'][0]['code']) && $ret['errors'][0]['code'] == 2001) {
+
+//            $arrData['schema'] = $this->getFields();
+            //创建应用
+            $addApp['name'] = $model->searchableAs();
+            $addApp['type'] = 'advance';
+            $fields = $model->getConnection()->getSchemaBuilder()->getColumnListing($model->getTable());
+            foreach ($fields as $field) {
+                $arrData['index']['search_fields'][$field] = ['fields'=>$model->getKeyName()];
+            }
+            $addApp['index']['search_fields']['default'] = ['fields'=>collect($fields)->diff(['goods_id'])->toArray(),'analyzer'=>'chn_standard'];
+            $addApp['index']['filter_fields'] = $fields;
+            $ok = $appClient->save(json_encode($addApp));
+
+        }else if(isset($ret['status']) && $ret['status']=='FAIL') {
+            $msg = isset($ret['errors'][0]['message']) ? $ret['errors'][0]['message'] : "请求接口出错！！！";
+            throw new \Exception($msg);
+        }
+    }
+
+
+
 }
