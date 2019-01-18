@@ -30,14 +30,42 @@
         ],
     ```
 
-4. 修改 `.env` 配置 scout driver；
+4. 修改 `.env` 配置 
 
         SCOUT_DRIVER=opensearch
-        
-5. 添加 `.env` Open Search 相关配置。
+        SCOUT_PREFIX=local
 
         OPENSEARCH_ACCESS_KEY=ACCESS_KEY
         OPENSEARCH_ACCESS_SECRET=ACCESS_SECRET
         OPENSEARCH_HOST=HOST
         OPENSEARCH_DEBUG=true
+        
+        
+6. 在你的Model里面引用  Searchable   如
+   ```
+   namespace App\Models;
+   
+   use Illuminate\Database\Eloquent\Model;
+   use Laravel\Scout\Searchable;
+   
+   class ShopSearchModel extends Model
+   {
+       use Searchable;
+       /**
+        * 数据表名
+        */
+       protected $table = "shop_search";
+   
+       /**
+        * 主键
+        */
+       protected $primaryKey = "goods_id";
+   }
+   
+   ```     
 
+7. 执行全量索引创建 该操作会自动创建阿里云APP
+  ``` 
+    php artisan scout:flush "App\Models\ShopSearchModel"
+ 
+  ``` 

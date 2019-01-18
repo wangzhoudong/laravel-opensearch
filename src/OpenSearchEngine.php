@@ -14,6 +14,8 @@ use OpenSearch\Util\SuggestParamsBuilder;
 use OpenSearch\Client\SearchClient;
 use OpenSearch\Generated\Common\OpenSearchResult;
 use OpenSearch\Util\SearchParamsBuilder;
+use Illuminate\Database\Eloquent\Model;
+
 
 class OpenSearchEngine extends Engine
 {
@@ -41,25 +43,38 @@ class OpenSearchEngine extends Engine
     }
 
     public function update($models){
+        if(!$models->count()) {
+            return false;
+        }
         //更新
+        $docs = [];
 
-        $params['body'] = [];
-
-        $models->each(function($model) use (&$params)
+        $models->each(function($model) use (&$docs)
         {
 
-
-            $doc = collect($model->toSearchableArray())->except(['created_at', 'updated_at', 'deleted_at']);
-            dd($doc);
-            $params['body'][] = [
-                'doc' => $doc,
-                'doc_as_upsert' => true
-            ];
+            $item['cmd'] = "ADD";
+            $item["fields"] = collect($model->toSearchableArray())->except(['deleted_at']);
+            $docs[] = $item;
         });
-        dd($params);
+        $ok = $this->documentClient->push(json_encode($docs),$models->first()->searchableAs(),$models->first()->getTable());
     }
 
-    public function delete($models){}
+    public function delete($models){
+        if(!$models->count()) {
+            return false;
+        }
+        //更新
+        $docs = [];
+
+        $models->each(function($model) use (&$docs)
+        {
+
+            $item['cmd'] = "delete";
+            $item["fields"] = collect($model->toSearchableArray())->except(['deleted_at']);
+            $docs[] = $item;
+        });
+        $ok = $this->documentClient->push(json_encode($docs),$models->first()->searchableAs(),$models->first()->getTable());
+    }
 
     public function search(Builder $builder){}
 
@@ -200,7 +215,29 @@ class OpenSearchEngine extends Engine
 
     public function flush($model)
     {
+
         $this->createOrUpdateApp($model);
+        $keyName = $model->getKeyName();
+        $appName = $model->searchableAs();
+        $table = $model->getTable();
+        //创建文档
+        $lastId = 0;
+        while (true) {
+            $data = $model->where($model->getKeyName(),'>',$lastId)->take(100)->get();
+            if(!$data->count()) {
+                break;
+            }
+            $docs = [];
+            foreach ($data as $item) {
+
+                $tmpAdd['cmd'] = "ADD";
+                $tmpAdd["fields"] = collect($item->toSearchableArray())->except(['deleted_at'])->toArray();
+                $docs[] = $tmpAdd;
+                $lastId = $item->{$keyName};
+            };
+            $ok = $this->documentClient->push(json_encode($docs),$appName,$table);
+            info('成功生成' . count($docs) . "索引...\r\n");
+        }
     }
 
     /**
@@ -208,26 +245,65 @@ class OpenSearchEngine extends Engine
      * @param $model
      * @throws \Exception
      */
-    protected function createOrUpdateApp($model) {
+    protected function createOrUpdateApp(Model $model) {
 
 
 
         $appClient = new AppClient($this->client);
+        $appName = $model->searchableAs();
+
+
+
         $ret = $this->checkResults($appClient->getById($model->searchableAs()));
         if(isset($ret['errors'][0]['code']) && $ret['errors'][0]['code'] == 2001) {
-
-//            $arrData['schema'] = $this->getFields();
-            //创建应用
-            $addApp['name'] = $model->searchableAs();
-            $addApp['type'] = 'advance';
+            $schemaTableFields = $this->getSchemaTableFields($model);
             $fields = $model->getConnection()->getSchemaBuilder()->getColumnListing($model->getTable());
-            foreach ($fields as $field) {
-                $arrData['index']['search_fields'][$field] = ['fields'=>$model->getKeyName()];
-            }
-            $addApp['index']['search_fields']['default'] = ['fields'=>collect($fields)->diff(['goods_id'])->toArray(),'analyzer'=>'chn_standard'];
-            $addApp['index']['filter_fields'] = $fields;
-            $ok = $appClient->save(json_encode($addApp));
+            $tableName = $model->getTable();
+            $addApp =
+                [
+                    "description" => $model->getTable(),
+                    "status" => 1,
+                    "fetch_fields" => $fields,
+                    "type" => "standard",
+                    "schema" => [
+                        "tables" => [$tableName=> [
+                            'fields' => $schemaTableFields,
+                            "primary_table" => true,
+                            "name" => $tableName
+                        ]],
+                        "indexes" => [
+                            "search_fields" =>[
+                                $model->getKeyName() => [
+                                    "fields" => [
+                                        $model->getKeyName()
+                                    ],
+                                ],
+                                "default" => [
+                                    "fields" => $this->getDefaultIndex($schemaTableFields),
+                                    "analyzer" => "chn_standard",
+                                ]
 
+
+                            ],
+                            "filter_fields" => $this->getFilterFields($schemaTableFields)
+                        ],
+                        "plugin_info" => [],
+                        "route_field" => null
+                    ],
+                    "quota" => [
+                        "doc_size" => 1,
+                        "compute_resource" => 20,
+                        "spec" => "opensearch.share.common",
+//
+                    ],
+                    "created" => time(),
+                    "name" => $appName,
+                ]
+            ;
+//
+//
+
+            $ok = $appClient->save(json_encode($addApp));
         }else if(isset($ret['status']) && $ret['status']=='FAIL') {
             $msg = isset($ret['errors'][0]['message']) ? $ret['errors'][0]['message'] : "请求接口出错！！！";
             throw new \Exception($msg);
@@ -236,4 +312,62 @@ class OpenSearchEngine extends Engine
 
 
 
+
+    public function getSchemaTableFields(Model $model)
+    {
+
+        $tableSchema = $model->getConnection()->getDatabaseName();
+        $keyName = $model->getKeyName();
+        $tableName = $model->getTable();
+
+        function getDataType($type)
+        {
+            if (in_array($type, ['tinyint', 'smallint', 'int', 'integer', 'bigint'])) {
+                $str = 'INT';
+            } else if (in_array($type, ['float', 'decimal', 'numeric'])) {
+                $str = 'FLOAT';
+            } else if (in_array($type, ['double'])) {
+                $str = 'DOUBLE';
+            } else if (in_array($type, ['char', 'time', 'timestamp', 'year'])) {
+                $str = 'LITERAL';
+            } else {
+                $str = 'TEXT';
+            }
+            return $str;
+        }
+
+        $structure = \DB::select('select column_name as `name`,data_type from information_schema.columns where  table_schema = :table_schema AND table_name = :table_name;', ['table_schema' => $tableSchema, 'table_name' => $tableName]);
+        $fields = [];
+        foreach ($structure as $item) {
+            $item->primary_key = strtolower($keyName) == strtolower($item->name);
+            $item->type = getDataType($item->data_type);
+            unset($item->data_type);
+            $fields[$item->name] = $item;
+        }
+
+        return $fields;
+    }
+
+
+    public function getDefaultIndex($schemaTableFields) {
+        $defaultIndex = [];
+        foreach ($schemaTableFields as $field=>$item) {
+            if($item->type=='TEXT') {
+                $defaultIndex[] = $field;
+            }
+        }
+
+        return array_slice($defaultIndex,0,8);
+    }
+
+    public function getFilterFields($schemaTableFields){
+        $arr = [];
+        foreach ($schemaTableFields as $field=>$item) {
+            if($item->type!='TEXT') {
+                $arr[] = $field;
+            }
+        }
+
+        return $arr;
+    }
 }
