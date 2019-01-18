@@ -10,7 +10,7 @@
 
 ## Usage
 
-1. 在阿里云 OpenSearch 控制台配置；
+1. 在阿里云 申请OpenSearch 功能，获取 access_key access_secret；
 
 2. Laravel 5.5 以下，`config/app.php`  中添加 `service provider`
 
@@ -69,3 +69,13 @@
     php artisan scout:flush "App\Models\ShopSearchModel"
  
   ``` 
+8.执行搜索
+
+```php
+use App\Models\ShopSearchModel;
+    
+    Route::get('search', function () {
+        // 为查看方便都转成数组
+        dump(ShopSearchModel::search('搜索关键字')->get()->toArray());
+    });
+```
