@@ -13,12 +13,16 @@
 1. 在阿里云 申请OpenSearch 功能，获取 access_key access_secret；
 
 2. Laravel 5.5 以下，`config/app.php`  中添加 `service provider`
-
+```
         Wangzd\\OpenSearch\\OpenSearchServiceProvider
 
     Laravel 5.5 及以上，自动加载 `service provider`，无需手动添加。
-    
-3. 在 scout.php 添加配置
+```
+3.发布配置项;  
+```bash
+php artisan vendor:publish --provider="Laravel\Scout\ScoutServiceProvider"
+```
+4. 在 config/scout.php 添加配置
 
     ```
         'opensearch'    => [
@@ -30,7 +34,7 @@
         ],
     ```
 
-4. 修改 `.env` 配置 
+5. 修改 `.env` 配置 
 
         SCOUT_DRIVER=opensearch
         SCOUT_PREFIX=local
