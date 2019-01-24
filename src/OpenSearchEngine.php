@@ -161,7 +161,7 @@ class OpenSearchEngine extends Engine
         if (isset($builder->wheres) && count($builder->wheres)>0) {
             //目前只支持 等于
             foreach ($builder->wheres as $key=>$value) {
-                $arr[] = $key . '=' . $value;
+                $arr[] = $key . '="' . $value . '"';
             }
             $params->setFilter(implode(' AND ',$arr));
         }
